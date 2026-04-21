@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="fr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OSINT Contact Finder v4.1</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class', theme: { extend: { colors: {
+            dark: { 800: '#1a1a2e', 900: '#0f0f23', 950: '#0a0a1a' },
+            accent: { 400: '#00d4ff', 500: '#00b4d8', 600: '#0096c7' },
+        }}}}
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+        * { scrollbar-width: thin; scrollbar-color: #00b4d8 #1a1a2e; }
+        body { font-family: 'Inter', sans-serif; background: #0a0a1a; }
+        code, .mono { font-family: 'JetBrains Mono', monospace; }
+        .glow { box-shadow: 0 0 20px rgba(0, 212, 255, 0.15); }
+        .glow-text { text-shadow: 0 0 10px rgba(0, 212, 255, 0.5); }
+        .gradient-bg { background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%); }
+        .card { background: rgba(26, 26, 46, 0.8); backdrop-filter: blur(10px); border: 1px solid rgba(0, 212, 255, 0.1); }
+        .card-green { border-color: rgba(34,197,94,0.3); }
+        .card-yellow { border-color: rgba(234,179,8,0.3); }
+        .card-gray { border-color: rgba(107,114,128,0.2); }
+        .card-red { border-color: rgba(239,68,68,0.2); }
+        .btn-primary { background: linear-gradient(135deg, #0096c7, #00b4d8); transition: all 0.3s; }
+        .btn-primary:hover { background: linear-gradient(135deg, #00b4d8, #00d4ff); box-shadow: 0 0 25px rgba(0, 212, 255, 0.4); transform: translateY(-1px); }
+        .btn-secondary { background: rgba(0, 212, 255, 0.1); border: 1px solid rgba(0, 212, 255, 0.3); transition: all 0.3s; }
+        .btn-secondary:hover { background: rgba(0, 212, 255, 0.2); }
+        .btn-danger { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); transition: all 0.3s; }
+        .btn-danger:hover { background: rgba(239, 68, 68, 0.2); }
+        .input-field { background: rgba(15, 15, 35, 0.8); border: 1px solid rgba(0, 212, 255, 0.2); transition: all 0.3s; }
+        .input-field:focus { border-color: #00d4ff; box-shadow: 0 0 15px rgba(0, 212, 255, 0.2); outline: none; }
+        .tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 9999px; font-size: 0.65rem; font-weight: 500; white-space: nowrap; }
+        .fade-in { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse-glow { 0%, 100% { box-shadow: 0 0 5px rgba(0,212,255,0.3); } 50% { box-shadow: 0 0 20px rgba(0,212,255,0.6); } }
+        .pulse-glow { animation: pulse-glow 2s infinite; }
+        .toast { position: fixed; bottom: 2rem; right: 2rem; z-index: 50; transform: translateY(100px); opacity: 0; transition: all 0.4s; }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .section-divider { height: 1px; background: linear-gradient(90deg, transparent, rgba(0,212,255,0.3), transparent); margin: 1rem 0; }
+        .result-card { transition: all 0.3s; }
+        .result-card:hover { background: rgba(26, 26, 46, 0.95); }
+        .log-entry { border-left: 3px solid; padding-left: 0.75rem; margin-bottom: 0.5rem; }
+        .log-info { border-color: #00b4d8; } .log-success { border-color: #22c55e; } .log-warn { border-color: #eab308; }
+        .log-error { border-color: #ef4444; } .log-search { border-color: #a855f7; } .log-verify { border-color: #f97316; }
+        .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(0,212,255,0.3); border-top-color: #00d4ff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .progress-bar { height: 4px; background: rgba(0,212,255,0.15); border-radius: 2px; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #0096c7, #00d4ff, #39ff14); border-radius: 2px; transition: width 0.5s ease; }
+        .extracted-item { background: rgba(15,15,35,0.6); border: 1px solid rgba(0,212,255,0.15); border-radius: 0.5rem; padding: 0.5rem 0.75rem; transition: all 0.2s; }
+        .extracted-item:hover { border-color: rgba(0,212,255,0.4); background: rgba(15,15,35,0.9); }
+        .proof-badge { font-size: 0.6rem; padding: 1px 6px; border-radius: 3px; }
+        .warn-badge { font-size: 0.6rem; padding: 1px 6px; border-radius: 3px; }
+        .source-badge { font-size: 0.6rem; padding: 1px 8px; border-radius: 4px; }
+        .score-ring { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; }
+        .collapsible-header { cursor: pointer; user-select: none; }
+        .collapsible-header .chevron { transition: transform 0.2s; }
+        .collapsible-header.open .chevron { transform: rotate(180deg); }
+    </style>
+</head>
+<body class="min-h-screen gradient-bg text-gray-200">
+    <div id="toast" class="toast card rounded-lg px-5 py-3 text-sm flex items-center gap-2">
+        <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+        <span id="toast-msg"></span>
+    </div>
+
+    <header class="border-b border-cyan-900/30 bg-dark-950/80 backdrop-blur-md sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center glow">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-white glow-text">OSINT Contact Finder <span class="text-xs text-cyan-400 font-normal">v4.1</span></h1>
+                    <p class="text-xs text-gray-500">Cross-validation &bull; Catch-all aware &bull; Multi-domaine</p>
+                </div>
+            </div>
+            <div id="api-badges" class="flex items-center gap-1.5 flex-wrap"></div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 py-8">
+        <section class="card rounded-2xl p-6 glow mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Nom Complet</label>
+                    <input type="text" id="fullname" class="input-field w-full rounded-xl px-4 py-3 text-white text-lg" placeholder="Ex: Jean Dupont" autocomplete="off">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Entreprise / Domaine</label>
+                    <input type="text" id="company" class="input-field w-full rounded-xl px-4 py-3 text-white text-lg" placeholder="Ex: acme.com ou Acme Corp">
+                </div>
+            </div>
+            <button onclick="launchFullScan()" id="btn-scan" class="btn-primary rounded-xl px-8 py-3.5 text-white font-semibold flex items-center gap-2 text-sm pulse-glow">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                <span>Lancer le scan</span>
+            </button>
+        </section>
+
+        <section id="scan-progress" class="hidden card rounded-2xl p-5 mb-6 fade-in">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="text-sm font-bold text-white flex items-center gap-2"><div class="spinner" id="scan-spinner"></div><span id="scan-status">Initialisation...</span></h3>
+                <span class="text-xs text-gray-500 mono" id="scan-step">0/11</span>
+            </div>
+            <div class="progress-bar mb-1"><div class="progress-fill" id="scan-progress-bar" style="width:0%"></div></div>
+            <p class="text-xs text-gray-600 mb-3" id="scan-phase"></p>
+            <div id="scan-log" class="space-y-1 max-h-52 overflow-y-auto text-xs"></div>
+        </section>
+
+        <section id="pappers-section" class="hidden card rounded-2xl p-5 mb-5 fade-in border-blue-900/30">
+            <h2 class="text-sm font-bold text-blue-400 flex items-center gap-2 mb-3">Informations Pappers.fr</h2>
+            <div id="pappers-content" class="text-sm space-y-1"></div>
+        </section>
+
+        <div id="results-area" class="hidden space-y-5 fade-in">
+            <!-- Domains Info -->
+            <section id="domains-section" class="hidden card rounded-2xl p-5">
+                <h2 class="text-sm font-bold text-gray-300 mb-3">Domaines d&eacute;tect&eacute;s</h2>
+                <div id="domains-list" class="flex flex-wrap gap-2"></div>
+            </section>
+
+            <!-- Summary -->
+            <section id="summary-section" class="hidden card rounded-2xl p-5">
+                <div class="flex flex-wrap items-center gap-6">
+                    <div class="text-center"><div class="text-2xl font-bold text-green-400" id="sum-verified">0</div><div class="text-xs text-gray-500">V&eacute;rifi&eacute;s</div></div>
+                    <div class="text-center"><div class="text-2xl font-bold text-yellow-400" id="sum-probable">0</div><div class="text-xs text-gray-500">Probables</div></div>
+                    <div class="text-center"><div class="text-2xl font-bold text-gray-400" id="sum-possible">0</div><div class="text-xs text-gray-500">Possibles</div></div>
+                    <div class="text-center"><div class="text-2xl font-bold text-red-400" id="sum-eliminated">0</div><div class="text-xs text-gray-500">&Eacute;limin&eacute;s</div></div>
+                    <div class="ml-auto text-right"><div class="text-xs text-gray-500" id="sum-sources">0 sources</div><div class="text-xs text-gray-500" id="sum-time">0s</div></div>
+                </div>
+            </section>
+
+            <section id="verified-section" class="hidden card card-green rounded-2xl p-5 result-card">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-bold text-green-400 flex items-center gap-2">V&eacute;rifi&eacute;s (90+) <span class="tag bg-green-900/40 text-green-400 border border-green-800/40" id="verified-count">0</span></h2>
+                    <button onclick="copySection('verified-list')" class="btn-secondary rounded-lg px-3 py-1.5 text-xs">Copier</button>
+                </div>
+                <div id="verified-list" class="space-y-2"></div>
+            </section>
+
+            <section id="probable-section" class="hidden card card-yellow rounded-2xl p-5 result-card">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-bold text-yellow-400 flex items-center gap-2">Probables (60-89) <span class="tag bg-yellow-900/40 text-yellow-400 border border-yellow-800/40" id="probable-count">0</span></h2>
+                    <button onclick="copySection('probable-list')" class="btn-secondary rounded-lg px-3 py-1.5 text-xs">Copier</button>
+                </div>
+                <div id="probable-list" class="space-y-2"></div>
+            </section>
+
+            <section id="possible-section" class="hidden card card-gray rounded-2xl p-5 result-card">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-bold text-gray-400 flex items-center gap-2 collapsible-header" onclick="toggleCollapsible(this,'possible-list')">
+                        Possibles (30-59) <span class="tag bg-gray-700/40 text-gray-400 border border-gray-600/40" id="possible-count">0</span>
+                        <svg class="w-3 h-3 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </h2>
+                </div>
+                <div id="possible-list" class="space-y-2 hidden"></div>
+            </section>
+
+            <section id="others-section" class="hidden card rounded-2xl p-5 result-card" style="border-color: rgba(107,114,128,0.15);">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-bold text-gray-500 flex items-center gap-2 collapsible-header" onclick="toggleCollapsible(this,'others-list')">
+                        Autres contacts du domaine <span class="tag bg-gray-700/40 text-gray-500 border border-gray-600/40" id="others-count">0</span>
+                        <svg class="w-3 h-3 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </h2>
+                </div>
+                <div id="others-list" class="space-y-2 hidden"></div>
+            </section>
+
+            <section id="predicted-section" class="hidden card rounded-2xl p-5 result-card">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-bold text-cyan-400 flex items-center gap-2 collapsible-header" onclick="toggleCollapsible(this,'predicted-list')">
+                        Pr&eacute;dictions (non confirm&eacute;es) <span class="tag bg-cyan-900/30 text-cyan-400 border border-cyan-800/40" id="predicted-count">0</span>
+                        <svg class="w-3 h-3 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </h2>
+                </div>
+                <div id="predicted-list" class="space-y-2 hidden"></div>
+            </section>
+
+            <section id="eliminated-section" class="hidden card card-red rounded-2xl p-5 result-card">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-bold text-red-400 flex items-center gap-2 collapsible-header" onclick="toggleCollapsible(this,'eliminated-list')">
+                        &Eacute;limin&eacute;s <span class="tag bg-red-900/30 text-red-400 border border-red-800/40" id="eliminated-count">0</span>
+                        <svg class="w-3 h-3 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </h2>
+                </div>
+                <div id="eliminated-list" class="space-y-2 hidden"></div>
+            </section>
+
+            <section id="sources-section" class="hidden card rounded-2xl p-5 result-card">
+                <div class="mb-4"><h2 class="text-sm font-bold text-gray-400 flex items-center gap-2 collapsible-header" onclick="toggleCollapsible(this,'sources-list')">Sources <svg class="w-3 h-3 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></h2></div>
+                <div id="sources-list" class="space-y-2 hidden"></div>
+            </section>
+
+            <section id="dorks-section" class="hidden card rounded-2xl p-5 result-card">
+                <div class="mb-4"><h2 class="text-sm font-bold text-gray-400 flex items-center gap-2 collapsible-header" onclick="toggleCollapsible(this,'dorks-list')">Google Dorks <svg class="w-3 h-3 chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></h2></div>
+                <div id="dorks-list" class="space-y-2 hidden"></div>
+            </section>
+
+            <section class="card rounded-2xl p-4">
+                <div class="flex flex-wrap gap-3">
+                    <button onclick="exportAll('csv')" class="btn-secondary rounded-lg px-4 py-2 text-sm">Exporter CSV</button>
+                    <button onclick="exportAll('text')" class="btn-secondary rounded-lg px-4 py-2 text-sm">Exporter TXT</button>
+                    <button onclick="copyAll()" class="btn-secondary rounded-lg px-4 py-2 text-sm">Tout copier</button>
+                    <button onclick="clearResults()" class="btn-danger rounded-lg px-4 py-2 text-sm text-red-400">Effacer</button>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <footer class="border-t border-cyan-900/20 mt-12 py-6 text-center text-xs text-gray-600">
+        <p>OSINT Contact Finder v4.1 &mdash; Cross-validation &bull; Catch-all aware &bull; Multi-domaine</p>
+        <p class="mt-1">Respectez la l&eacute;gislation (RGPD, CNIL). Usage professionnel uniquement.</p>
+    </footer>
+
+<script>
+const state = { scanning: false, scanData: null };
+
+function showToast(msg) { const t=document.getElementById('toast'); document.getElementById('toast-msg').textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2500); }
+function getInputs() { const f=document.getElementById('fullname').value.trim(), c=document.getElementById('company').value.trim(); if(!f||!c){showToast('Remplissez les deux champs');return null;} return{fullname:f,company:c}; }
+function escapeHtml(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function truncate(s,l) { return s.length>l?s.substring(0,l)+'\u2026':s; }
+function toggleCollapsible(h,id) { h.classList.toggle('open'); document.getElementById(id).classList.toggle('hidden'); }
+function showResults() { document.getElementById('results-area').classList.remove('hidden'); }
+
+function logMsg(msg, type='info') {
+    const log=document.getElementById('scan-log'), e=document.createElement('div');
+    e.className=`log-entry log-${type} text-gray-400 fade-in`;
+    const t=new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    const colors={info:'text-cyan-400',success:'text-green-400',warn:'text-yellow-400',error:'text-red-400',search:'text-purple-400',verify:'text-orange-400'};
+    e.innerHTML=`<span class="text-gray-600">[${t}]</span> <span class="${colors[type]||''}">${msg}</span>`;
+    log.appendChild(e); log.scrollTop=log.scrollHeight;
+}
+function setStep(c,t,l) {
+    const p=t>0?Math.round((c/t)*100):0;
+    document.getElementById('scan-progress-bar').style.width=p+'%';
+    document.getElementById('scan-step').textContent=`${c}/${t}`;
+    document.getElementById('scan-phase').textContent=l;
+    document.getElementById('scan-status').textContent=l;
+}
+
+async function loadApiStatus() {
+    try {
+        const r=await fetch('/api/status'), d=await r.json(), el=document.getElementById('api-badges');
+        const apis=[{k:'jina',n:'Jina'},{k:'hunter',n:'Hunter'},{k:'snov',n:'Snov'},{k:'apollo',n:'Apollo'},{k:'pappers',n:'Pappers'},{k:'abstract',n:'Abstract'}];
+        el.innerHTML=apis.map(a=>{
+            const info=d.apis[a.k];
+            const ok=info?.configured||info===true;
+            let label=a.n;
+            let cls=ok?'bg-green-900/30 text-green-400 border border-green-800/40':'bg-gray-800/30 text-gray-600 border border-gray-700/30';
+            let icon=ok?'\u2705':'\u274c';
+            if(ok && info?.quota) {
+                const q=info.quota;
+                if(q.searches) {
+                    const sLeft=q.searches.available-q.searches.used;
+                    const vLeft=q.verifications.available-q.verifications.used;
+                    label+=` (${sLeft}s/${vLeft}v)`;
+                    if(sLeft<=5||vLeft<=10){cls='bg-yellow-900/30 text-yellow-400 border border-yellow-800/40';icon='\u26a0\ufe0f';}
+                }
+                if(q.remaining!==undefined&&q.remaining!==null) {
+                    label+=` (${q.remaining}cr)`;
+                    if(q.remaining<=10){cls='bg-yellow-900/30 text-yellow-400 border border-yellow-800/40';icon='\u26a0\ufe0f';}
+                }
+            }
+            if(ok && info?.note) label+=` *`;
+            return `<span class="tag ${cls}" title="${info?.note||''}">${icon} ${label}</span>`;
+        }).join('');
+    } catch { document.getElementById('api-badges').innerHTML='<span class="text-xs text-red-400">Serveur inaccessible</span>'; }
+}
+document.addEventListener('DOMContentLoaded', loadApiStatus);
+
+async function launchFullScan() {
+    if(state.scanning) return;
+    const inputs=getInputs(); if(!inputs) return;
+    state.scanning=true; state.scanData=null;
+    const btn=document.getElementById('btn-scan');
+    btn.disabled=true; btn.innerHTML='<div class="spinner"></div> <span>Scan...</span>';
+    document.getElementById('scan-progress').classList.remove('hidden');
+    document.getElementById('scan-log').innerHTML='';
+    document.getElementById('scan-spinner').style.display='inline-block';
+    document.getElementById('pappers-section').classList.add('hidden');
+    document.getElementById('domains-section').classList.add('hidden');
+
+    try {
+        const response=await fetch('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(inputs)});
+        if(!response.ok){const err=await response.json().catch(()=>({error:`HTTP ${response.status}`})); logMsg(`Erreur : ${err.error}`,'error'); finishScan(); return;}
+        const reader=response.body.getReader(), decoder=new TextDecoder();
+        let buffer='';
+        while(true){
+            const{value,done}=await reader.read(); if(done) break;
+            buffer+=decoder.decode(value,{stream:true});
+            const lines=buffer.split('\n'); buffer=lines.pop();
+            for(const line of lines){ if(line.startsWith('data: ')){ try{handleSSEEvent(JSON.parse(line.slice(6)));}catch{} } }
+        }
+        if(buffer.startsWith('data: ')){try{handleSSEEvent(JSON.parse(buffer.slice(6)));}catch{}}
+    } catch(e) { logMsg(`Erreur connexion : ${e.message}`,'error'); }
+    finishScan();
+}
+
+function handleSSEEvent(data) {
+    switch(data.event) {
+        case 'log': logMsg(data.msg, data.type); break;
+        case 'progress': setStep(data.step, data.total, data.label); break;
+        case 'pappers': renderPappers(data.data); break;
+        case 'done': state.scanData=data; renderAllResults(data); break;
+    }
+}
+
+function finishScan() {
+    document.getElementById('scan-spinner').style.display='none';
+    document.getElementById('scan-status').textContent=`Termin\u00e9 (${state.scanData?.elapsed||'?'}s)`;
+    const btn=document.getElementById('btn-scan');
+    btn.disabled=false; btn.innerHTML='<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> <span>Relancer</span>';
+    state.scanning=false;
+}
+
+function renderPappers(info) {
+    if(!info) return;
+    const s=document.getElementById('pappers-section'), c=document.getElementById('pappers-content');
+    let h=`<div class="text-gray-300"><strong class="text-blue-400">${escapeHtml(info.nom)}</strong>`;
+    if(info.siren) h+=` <span class="text-gray-500 mono text-xs">(SIREN: ${escapeHtml(info.siren)})</span>`;
+    h+='</div>';
+    if(info.siege) h+=`<div class="text-gray-500 text-xs">${escapeHtml(info.siege)}</div>`;
+    if(info.domaine) h+=`<div class="text-xs">Site : <code class="text-cyan-400">${escapeHtml(info.domaine)}</code></div>`;
+    if(info.dirigeants?.length) { h+='<div class="text-xs mt-2 text-gray-400">Dirigeants :</div>'; h+=info.dirigeants.slice(0,5).map(d=>`<div class="text-xs text-gray-300 ml-3">\u2022 ${escapeHtml(d.prenom)} ${escapeHtml(d.nom)} <span class="text-gray-500">(${escapeHtml(d.fonction)})</span></div>`).join(''); }
+    c.innerHTML=h; s.classList.remove('hidden');
+}
+
+function renderAllResults(data) {
+    if(!data) return;
+
+    // Domains info
+    if(data.domainsInfo) {
+        const ds=document.getElementById('domains-section'), dl=document.getElementById('domains-list');
+        const entries=Object.entries(data.domainsInfo);
+        if(entries.length>0) {
+            dl.innerHTML=entries.map(([d,info])=>{
+                const mxOk=info.mxValid;
+                const ca=info.catchAll;
+                let badge='';
+                if(!mxOk) badge='<span class="tag bg-red-900/30 text-red-400 border border-red-800/40">\u274c MX invalide</span>';
+                else if(ca===true) badge='<span class="tag bg-yellow-900/30 text-yellow-400 border border-yellow-800/40">\ud83d\udfe1 Catch-all</span>';
+                else if(ca===false) badge='<span class="tag bg-green-900/30 text-green-400 border border-green-800/40">\ud83d\udfe2 SMTP fiable</span>';
+                else badge='<span class="tag bg-gray-700/30 text-gray-400 border border-gray-600/30">\u26aa Non test\u00e9</span>';
+                return `<div class="extracted-item flex items-center gap-2"><code class="text-cyan-400 text-sm">${escapeHtml(d)}</code>${badge}<span class="text-xs text-gray-600">(${escapeHtml(info.source)})</span></div>`;
+            }).join('');
+            ds.classList.remove('hidden');
+        }
+    }
+
+    // Summary
+    document.getElementById('sum-verified').textContent=data.summary?.verified||0;
+    document.getElementById('sum-probable').textContent=data.summary?.probable||0;
+    document.getElementById('sum-possible').textContent=data.summary?.possible||0;
+    document.getElementById('sum-eliminated').textContent=data.summary?.eliminated||0;
+    document.getElementById('sum-sources').textContent=`${data.summary?.sources||0} sources`;
+    document.getElementById('sum-time').textContent=`${data.elapsed}s`;
+    document.getElementById('summary-section').classList.remove('hidden');
+
+    renderCandidateList('verified', data.verified||[]);
+    renderCandidateList('probable', data.probable||[]);
+    renderCandidateList('possible', data.possible||[]);
+    renderOtherEmployees(data.otherEmployees||[], data.domain);
+    renderPredictions(data.predictions||[], data.hunterPattern);
+    renderEliminated(data.eliminated||[]);
+    renderSources(data.sources||[]);
+    renderDorks(data.dorks||[]);
+    showResults();
+}
+
+function renderCandidateList(name, items) {
+    const sec=document.getElementById(`${name}-section`), list=document.getElementById(`${name}-list`), cnt=document.getElementById(`${name}-count`);
+    if(!items.length){sec.classList.add('hidden');return;}
+    cnt.textContent=items.length; sec.classList.remove('hidden');
+    const emails=items.filter(c=>c.type==='email'), phones=items.filter(c=>c.type==='phone'), profiles=items.filter(c=>c.type==='linkedin'||c.type==='twitter');
+    let h='';
+    if(emails.length){h+='<h4 class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">\u2709\ufe0f Emails</h4>';h+=emails.map(renderItem).join('');}
+    if(phones.length){if(emails.length)h+='<div class="section-divider"></div>';h+='<h4 class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">\ud83d\udcde T\u00e9l\u00e9phones</h4>';h+=phones.map(renderItem).join('');}
+    if(profiles.length){if(emails.length+phones.length)h+='<div class="section-divider"></div>';h+='<h4 class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">\ud83d\udd17 Profils</h4>';h+=profiles.map(renderItem).join('');}
+    list.innerHTML=h;
+}
+
+function renderItem(c) {
+    const sc=c.score>=90?'bg-green-500 text-green-950':c.score>=60?'bg-yellow-500 text-yellow-950':'bg-gray-600 text-gray-200';
+    const vc=c.score>=90?'text-green-400':c.score>=60?'text-yellow-400':'text-gray-300';
+    const sv=escapeHtml(c.value), ip=c.type==='linkedin'||c.type==='twitter';
+    const proofs=(c.proofs||[]).map(p=>`<span class="proof-badge bg-green-900/40 text-green-400 border border-green-800/30">\u2713 ${escapeHtml(p)}</span>`).join(' ');
+    const warns=(c.warnings||[]).map(w=>`<span class="warn-badge bg-yellow-900/40 text-yellow-400 border border-yellow-800/30">\u26a0 ${escapeHtml(w)}</span>`).join(' ');
+    const srcs=(c.sources||[]).slice(0,3).map(s=>`<span class="source-badge bg-purple-900/30 text-purple-400/80 border border-purple-800/30">${escapeHtml(truncate(s,25))}</span>`).join(' ');
+    const cv=c.value.replace(/'/g,"\\'");
+    return `<div class="extracted-item flex items-start gap-3 mb-1.5">
+        <div class="score-ring ${sc} shrink-0 mt-0.5">${c.score}</div>
+        <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">${ip?`<a href="${sv}" target="_blank" class="${vc} text-sm font-semibold hover:underline truncate">${sv}</a>`:`<code class="${vc} text-sm font-semibold">${sv}</code>`}${c.type==='linkedin'?'<span class="tag bg-blue-900/30 text-blue-400 border border-blue-800/40">LinkedIn</span>':''}${c.apolloTitle?`<span class="tag bg-purple-900/30 text-purple-400 border border-purple-800/40">${escapeHtml(c.apolloTitle)}</span>`:''}</div>
+            <div class="flex items-center gap-1 flex-wrap mt-1">${proofs}</div>
+            ${warns?`<div class="flex items-center gap-1 flex-wrap mt-1">${warns}</div>`:''}
+            <div class="flex items-center gap-1 flex-wrap mt-1">${srcs}${(c.sources||[]).length>3?`<span class="text-xs text-gray-600">+${c.sources.length-3}</span>`:''}</div>
+        </div>
+        <button onclick="copyText('${cv}')" class="text-gray-500 hover:text-cyan-400 p-1 shrink-0 mt-0.5"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></button>
+    </div>`;
+}
+
+function renderOtherEmployees(items, domain) {
+    const s=document.getElementById('others-section'),l=document.getElementById('others-list'),c=document.getElementById('others-count');
+    if(!items.length){s.classList.add('hidden');return;}
+    c.textContent=items.length; s.classList.remove('hidden');
+    l.innerHTML=items.map(item=>{
+        const sv=escapeHtml(item.value);
+        const srcs=(item.sources||[]).slice(0,2).map(s=>`<span class="source-badge bg-gray-800/40 text-gray-500 border border-gray-700/30">${escapeHtml(truncate(s,25))}</span>`).join(' ');
+        const cv=item.value.replace(/'/g,"\\'");
+        return `<div class="extracted-item flex items-center gap-3 opacity-70"><code class="text-gray-400 text-sm">${sv}</code>${srcs}<button onclick="copyText('${cv}')" class="text-gray-600 hover:text-cyan-400 p-1 ml-auto"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></button></div>`;
+    }).join('');
+}
+
+function renderPredictions(preds, pattern) {
+    const s=document.getElementById('predicted-section'),l=document.getElementById('predicted-list'),c=document.getElementById('predicted-count');
+    if(!preds.length){s.classList.add('hidden');return;} c.textContent=preds.length; s.classList.remove('hidden');
+    const pn=pattern?`<div class="extracted-item border-cyan-900/30 mb-3"><span class="text-xs text-gray-400">Pattern Hunter :</span> <code class="text-cyan-400 text-sm ml-2">${escapeHtml(pattern)}</code></div>`:'';
+    l.innerHTML=pn+preds.map(p=>`<div class="extracted-item flex items-center justify-between"><div class="flex items-center gap-3 flex-1 min-w-0"><code class="text-gray-400 text-sm">${escapeHtml(p.email)}</code><span class="tag bg-gray-700/30 text-gray-500 border border-gray-600/30">${escapeHtml(p.pattern)}</span></div><button onclick="copyText('${escapeHtml(p.email)}')" class="text-gray-600 hover:text-cyan-400 p-1"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg></button></div>`).join('');
+}
+
+function renderEliminated(items) {
+    const s=document.getElementById('eliminated-section'),l=document.getElementById('eliminated-list'),c=document.getElementById('eliminated-count');
+    if(!items.length){s.classList.add('hidden');return;} c.textContent=items.length; s.classList.remove('hidden');
+    l.innerHTML=items.map(c=>`<div class="extracted-item flex items-center justify-between opacity-60"><div class="flex items-center gap-3 flex-1 min-w-0"><code class="text-red-400/60 text-sm line-through">${escapeHtml(c.value)}</code><span class="text-xs text-red-400/60">\u2014 ${escapeHtml(c.eliminatedReason||'score < 30')}</span></div></div>`).join('');
+}
+
+function renderSources(sources) {
+    const s=document.getElementById('sources-section'),l=document.getElementById('sources-list');
+    if(!sources.length){s.classList.add('hidden');return;} s.classList.remove('hidden');
+    l.innerHTML=sources.map(s=>`<div class="extracted-item flex items-center gap-3"><span class="tag bg-purple-900/30 text-purple-400 border border-purple-800/40 shrink-0">${escapeHtml(s.query)}</span><div class="flex-1 min-w-0"><a href="${escapeHtml(s.url)}" target="_blank" class="text-cyan-400 hover:text-green-400 text-sm truncate block">${escapeHtml(s.title||s.url)}</a><p class="text-xs text-gray-600 truncate">${escapeHtml(s.url)}</p></div></div>`).join('');
+}
+
+function renderDorks(dorks) {
+    const s=document.getElementById('dorks-section'),l=document.getElementById('dorks-list');
+    if(!dorks.length){s.classList.add('hidden');return;} s.classList.remove('hidden');
+    l.innerHTML=dorks.map(cat=>`<div class="mb-3"><h4 class="text-xs font-semibold text-gray-400 mb-1.5">${cat.icon} ${cat.cat}</h4>${cat.queries.map(q=>{const u='https://www.google.com/search?q='+encodeURIComponent(q.q);return`<div class="extracted-item flex items-center gap-2 mb-1 group"><span class="text-xs text-gray-500 w-28 shrink-0">${q.l}</span><a href="${u}" target="_blank" class="text-cyan-400 hover:text-green-400 mono text-xs flex-1 truncate">${escapeHtml(q.q)}</a></div>`;}).join('')}</div>`).join('');
+}
+
+function copyText(t){navigator.clipboard.writeText(t).then(()=>showToast('Copi\u00e9 !'));}
+function copySection(id){const el=document.getElementById(id),items=[];el.querySelectorAll('code').forEach(c=>items.push(c.textContent));if(!items.length)el.querySelectorAll('a').forEach(a=>{if(a.href)items.push(a.textContent);});navigator.clipboard.writeText(items.join('\n')).then(()=>showToast(`${items.length} copi\u00e9s`));}
+
+function copyAll(){
+    if(!state.scanData){showToast('Aucun r\u00e9sultat');return;}
+    const d=state.scanData, lines=[`=== OSINT Report v4.1 ===`,`Date: ${new Date().toLocaleString('fr-FR')}`,`Domaine: ${d.domain}`,''];
+    [{name:'V\u00c9RIFI\u00c9S (90+)',items:d.verified||[]},{name:'PROBABLES (60-89)',items:d.probable||[]},{name:'POSSIBLES (30-59)',items:d.possible||[]}].forEach(tier=>{
+        if(!tier.items.length) return;
+        lines.push(`--- ${tier.name} ---`);
+        tier.items.forEach(c=>{ lines.push(`[${c.score}] ${c.type.toUpperCase()} ${c.value}`); lines.push(`   Preuves: ${(c.proofs||[]).join(', ')}`); if(c.warnings?.length) lines.push(`   Warnings: ${c.warnings.join(', ')}`); lines.push(`   Sources: ${(c.sources||[]).join(', ')}`); });
+        lines.push('');
+    });
+    if((d.predictions||[]).length){lines.push('--- PR\u00c9DICTIONS ---');d.predictions.forEach(p=>lines.push(`${p.email} (${p.pattern})`));}
+    navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('Rapport copi\u00e9'));
+}
+
+function exportAll(format){
+    if(!state.scanData){showToast('Aucun r\u00e9sultat');return;}
+    const d=state.scanData, label=document.getElementById('fullname').value.trim()||'export';
+    if(format==='csv'){
+        const rows=[['Score','Niveau','Type','Valeur','Preuves','Warnings','Sources']];
+        const all=[...(d.verified||[]),...(d.probable||[]),...(d.possible||[])];
+        all.forEach(c=>{const lv=c.score>=90?'V\u00e9rifi\u00e9':c.score>=60?'Probable':'Possible';rows.push([c.score,lv,c.type,c.value,(c.proofs||[]).join(' | '),(c.warnings||[]).join(' | '),(c.sources||[]).join(' | ')]);});
+        (d.predictions||[]).forEach(p=>rows.push(['','Pr\u00e9diction','email',p.email,p.pattern,'','']));
+        const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+        downloadFile(`osint_${label.replace(/\s+/g,'_')}.csv`,csv,'text/csv');
+    } else {
+        const lines=[`OSINT Report v4.1: ${label}`,`Date: ${new Date().toLocaleString('fr-FR')}`,`Domaine: ${d.domain}`,'='.repeat(50),''];
+        [...(d.verified||[]),...(d.probable||[]),...(d.possible||[])].forEach(c=>{
+            const i=c.score>=90?'\u2705':c.score>=60?'\u26a0\ufe0f':'\u2753';
+            lines.push(`${i} [${c.score}] ${c.type.toUpperCase()} ${c.value}`);
+            lines.push(`   Preuves: ${(c.proofs||[]).join(', ')}`);
+            if(c.warnings?.length) lines.push(`   \u26a0 ${c.warnings.join(', ')}`);
+        });
+        lines.push('','--- Pr\u00e9dictions ---');
+        (d.predictions||[]).forEach(p=>lines.push(`? ${p.email} (${p.pattern})`));
+        downloadFile(`osint_${label.replace(/\s+/g,'_')}.txt`,lines.join('\n'),'text/plain');
+    }
+    showToast('Export\u00e9');
+}
+
+function downloadFile(f,c,m){const b=new Blob(['\uFEFF'+c],{type:m+';charset=utf-8'}),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=f;a.click();URL.revokeObjectURL(u);}
+
+function clearResults(){
+    state.scanData=null;
+    ['results-area','summary-section','verified-section','probable-section','possible-section','others-section','predicted-section','eliminated-section','sources-section','dorks-section','scan-progress','pappers-section','domains-section'].forEach(id=>{const el=document.getElementById(id);if(el)el.classList.add('hidden');});
+    showToast('Effac\u00e9');
+}
+
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.target.id==='fullname'||e.target.id==='company')){e.preventDefault();launchFullScan();}});
+</script>
+</body>
+</html>

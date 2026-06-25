@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OSINT Contact Finder v4.1</title>
+    <title>OSINT Contact Finder v6.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = { darkMode: 'class', theme: { extend: { colors: {
@@ -73,8 +73,8 @@
                     <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                 </div>
                 <div>
-                    <h1 class="text-xl font-bold text-white glow-text">OSINT Contact Finder <span class="text-xs text-cyan-400 font-normal">v4.1</span></h1>
-                    <p class="text-xs text-gray-500">Cross-validation &bull; Catch-all aware &bull; Multi-domaine</p>
+                    <h1 class="text-xl font-bold text-white glow-text">OSINT Contact Finder <span class="text-xs text-cyan-400 font-normal">v6.0</span></h1>
+                    <p class="text-xs text-gray-500">14 sources &bull; GitHub / Wayback / SMTP direct &bull; RGPD</p>
                 </div>
             </div>
             <div id="api-badges" class="flex items-center gap-1.5 flex-wrap"></div>
@@ -202,6 +202,9 @@
                 <div class="flex flex-wrap gap-3">
                     <button onclick="exportAll('csv')" class="btn-secondary rounded-lg px-4 py-2 text-sm">Exporter CSV</button>
                     <button onclick="exportAll('text')" class="btn-secondary rounded-lg px-4 py-2 text-sm">Exporter TXT</button>
+                    <button onclick="exportCrm('hubspot')" class="btn-secondary rounded-lg px-4 py-2 text-sm">HubSpot</button>
+                    <button onclick="exportCrm('salesforce')" class="btn-secondary rounded-lg px-4 py-2 text-sm">Salesforce</button>
+                    <button onclick="exportCrm('pipedrive')" class="btn-secondary rounded-lg px-4 py-2 text-sm">Pipedrive</button>
                     <button onclick="copyAll()" class="btn-secondary rounded-lg px-4 py-2 text-sm">Tout copier</button>
                     <button onclick="clearResults()" class="btn-danger rounded-lg px-4 py-2 text-sm text-red-400">Effacer</button>
                 </div>
@@ -210,7 +213,7 @@
     </main>
 
     <footer class="border-t border-cyan-900/20 mt-12 py-6 text-center text-xs text-gray-600">
-        <p>OSINT Contact Finder v4.1 &mdash; Cross-validation &bull; Catch-all aware &bull; Multi-domaine</p>
+        <p>OSINT Contact Finder v6.0 &mdash; 14 sources &bull; Stats-aware predictions &bull; SMTP direct fallback</p>
         <p class="mt-1">Respectez la l&eacute;gislation (RGPD, CNIL). Usage professionnel uniquement.</p>
     </footer>
 
@@ -443,7 +446,7 @@ function copySection(id){const el=document.getElementById(id),items=[];el.queryS
 
 function copyAll(){
     if(!state.scanData){showToast('Aucun r\u00e9sultat');return;}
-    const d=state.scanData, lines=[`=== OSINT Report v4.1 ===`,`Date: ${new Date().toLocaleString('fr-FR')}`,`Domaine: ${d.domain}`,''];
+    const d=state.scanData, lines=[`=== OSINT Report v6.0 ===`,`Date: ${new Date().toLocaleString('fr-FR')}`,`Domaine: ${d.domain}`,''];
     [{name:'V\u00c9RIFI\u00c9S (90+)',items:d.verified||[]},{name:'PROBABLES (60-89)',items:d.probable||[]},{name:'POSSIBLES (30-59)',items:d.possible||[]}].forEach(tier=>{
         if(!tier.items.length) return;
         lines.push(`--- ${tier.name} ---`);
@@ -465,7 +468,7 @@ function exportAll(format){
         const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
         downloadFile(`osint_${label.replace(/\s+/g,'_')}.csv`,csv,'text/csv');
     } else {
-        const lines=[`OSINT Report v4.1: ${label}`,`Date: ${new Date().toLocaleString('fr-FR')}`,`Domaine: ${d.domain}`,'='.repeat(50),''];
+        const lines=[`OSINT Report v6.0: ${label}`,`Date: ${new Date().toLocaleString('fr-FR')}`,`Domaine: ${d.domain}`,'='.repeat(50),''];
         [...(d.verified||[]),...(d.probable||[]),...(d.possible||[])].forEach(c=>{
             const i=c.score>=90?'\u2705':c.score>=60?'\u26a0\ufe0f':'\u2753';
             lines.push(`${i} [${c.score}] ${c.type.toUpperCase()} ${c.value}`);
@@ -480,6 +483,13 @@ function exportAll(format){
 }
 
 function downloadFile(f,c,m){const b=new Blob(['\uFEFF'+c],{type:m+';charset=utf-8'}),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=f;a.click();URL.revokeObjectURL(u);}
+
+function exportCrm(format){
+    if(!state.scanData){showToast('Aucun résultat');return;}
+    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(state.scanData))));
+    window.location = `/api/export/${format}?data=${encodeURIComponent(b64)}`;
+    showToast('Export '+format);
+}
 
 function clearResults(){
     state.scanData=null;

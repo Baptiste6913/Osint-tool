@@ -1,11 +1,48 @@
 // ================================================================
 // EXTRACTORS — Extraction contextuelle de contacts depuis du texte
+// + de-obfuscation ([at] (at) [dot] ...) + gradient proximité
 // ================================================================
 const { normalize } = require('./helpers');
 
+// ================================================================
+// De-obfuscation : transforme "jean [at] truc [dot] com" → "jean@truc.com"
+// avant extraction. Conserve le texte d'origine pour les positions via
+// offset mapping (simplification : on extrait du texte désobfusqué).
+// ================================================================
+function deobfuscate(text) {
+    return text
+        // @ variations
+        .replace(/\s*(?:\[|\(|\{)\s*(?:at|AT|At|arobase|chez)\s*(?:\]|\)|\})\s*/g, '@')
+        .replace(/\s+(?:at|AT|At)\s+/g, '@')
+        .replace(/\s*＠\s*/g, '@')         // unicode fullwidth @
+        .replace(/&#64;/g, '@')
+        .replace(/&commat;/gi, '@')
+        // . variations (uniquement près d'un domaine apparent — on le fait large)
+        .replace(/\s*(?:\[|\(|\{)\s*(?:dot|DOT|Dot|point)\s*(?:\]|\)|\})\s*/g, '.')
+        .replace(/(\w)\s+(?:dot|DOT|Dot)\s+(\w{2,})/g, '$1.$2')
+        .replace(/&#46;/g, '.')
+        .replace(/&period;/gi, '.');
+}
+
+// ================================================================
+// Proximity gradient : plus l'email est proche du nom, plus le score
+// de confiance est élevé. Retourne 0-1.
+// ================================================================
+function proximityScore(matchIdx, namePositions) {
+    if (!namePositions || namePositions.length === 0) return 0;
+    const minDist = Math.min(...namePositions.map(np => Math.abs(matchIdx - np.pos)));
+    if (minDist < 100) return 1.0;
+    if (minDist < 300) return 0.7;
+    if (minDist < 600) return 0.4;
+    if (minDist < 1200) return 0.15;
+    return 0;
+}
+
 function extractContactsContextual(text, source, fullname, domain) {
     const results = [];
-    const textNorm = normalize(text);
+    // De-obfuscate d'abord
+    const textDeobf = deobfuscate(text);
+    const textNorm = normalize(textDeobf);
     const nameNorm = normalize(fullname);
     const nameParts = nameNorm.split(/\s+/).filter(p => p.length > 2);
     const firstName = nameParts[0] || '';
@@ -22,26 +59,27 @@ function extractContactsContextual(text, source, fullname, domain) {
         while (idx !== -1) { namePositions.push({ pos: idx }); idx = textNorm.indexOf(variant, idx + 1); }
     }
 
-    const EMAIL_WINDOW = 400;
-    const PHONE_WINDOW = 800;
-    function isNearNameEmail(mi) { return namePositions.length > 0 && namePositions.some(np => Math.abs(mi - np.pos) < EMAIL_WINDOW); }
-    function isNearNamePhone(mi) { return namePositions.length > 0 && namePositions.some(np => Math.abs(mi - np.pos) < PHONE_WINDOW); }
-    function isNearNameProfile(mi) { return namePositions.length > 0 && namePositions.some(np => Math.abs(mi - np.pos) < EMAIL_WINDOW); }
-
     const emailRx = /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/g;
     const blacklistExt = /\.(png|jpg|jpeg|gif|svg|css|js|woff|ttf|ico|webp)$/i;
     const fakeDomains = ['example.com', 'email.com', 'domain.com', 'test.com', 'placeholder.com', 'sentry.io'];
     const genericLocalParts = new Set(['noreply','no-reply','mailer-daemon','postmaster','abuse','webmaster','info','contact','support','admin','hello','privacy','legal','security','billing','sales','newsletter','unsubscribe','marketing','press','media','hr','jobs','careers','feedback','office','team','general','enquiries','service','help','assistance']);
 
     let m;
-    while ((m = emailRx.exec(text)) !== null) {
+    while ((m = emailRx.exec(textDeobf)) !== null) {
         const email = m[0].toLowerCase();
         if (blacklistExt.test(email)) continue;
         if (fakeDomains.some(d => email.endsWith('@' + d))) continue;
         if (email.length > 60 || email.length < 6) continue;
         const localPart = email.split('@')[0];
         const isGeneric = genericLocalParts.has(localPart);
-        results.push({ value: email, type: 'email', source, proximity: isNearNameEmail(m.index), isDomainMatch: email.endsWith('@' + domain), isGeneric });
+        const prox = proximityScore(m.index, namePositions);
+        results.push({
+            value: email, type: 'email', source,
+            proximity: prox > 0.3,          // binaire backward compat
+            proximityScore: prox,            // gradient 0-1
+            isDomainMatch: email.endsWith('@' + domain),
+            isGeneric
+        });
     }
 
     const phonePatterns = [
@@ -51,34 +89,42 @@ function extractContactsContextual(text, source, fullname, domain) {
     ];
     for (const rx of phonePatterns) {
         rx.lastIndex = 0;
-        while ((m = rx.exec(text)) !== null) {
+        while ((m = rx.exec(textDeobf)) !== null) {
             const raw = m[0].trim();
             const digits = raw.replace(/\D/g, '');
             if (digits.length < 10 || digits.length > 15) continue;
             if (/^(19|20)\d{6,}$/.test(digits) && !digits.startsWith('33')) continue;
             let display = raw;
             if (/^0[1-9]\d{8}$/.test(digits)) display = digits.replace(/(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/, '$1 $2 $3 $4 $5');
-            results.push({ value: display, type: 'phone', source, proximity: isNearNamePhone(m.index), isDomainMatch: false, isGeneric: false });
+            const prox = proximityScore(m.index, namePositions);
+            results.push({
+                value: display, type: 'phone', source,
+                proximity: prox > 0.15,     // tél : fenêtre plus large
+                proximityScore: prox,
+                isDomainMatch: false, isGeneric: false
+            });
         }
     }
 
     const linkedinRx = /https?:\/\/(?:[a-z]{2,3}\.)?linkedin\.com\/in\/([A-Za-z0-9\-_%]+)/g;
-    while ((m = linkedinRx.exec(text)) !== null) {
+    while ((m = linkedinRx.exec(textDeobf)) !== null) {
         const profileSlug = decodeURIComponent(m[1]).toLowerCase().replace(/[^a-z]/g, '');
-        // Filtrer : ne garder que les profils dont l'URL contient le nom ou prenom
         const hasFirstName = firstName.length > 2 && profileSlug.includes(firstName.replace(/[^a-z]/g, ''));
         const hasLastName = lastName.length > 2 && profileSlug.includes(lastName.split(' ')[0].replace(/[^a-z]/g, ''));
         if (hasFirstName || hasLastName) {
-            results.push({ value: m[0], type: 'linkedin', source, proximity: isNearNameProfile(m.index), isDomainMatch: false, isGeneric: false });
+            const prox = proximityScore(m.index, namePositions);
+            results.push({ value: m[0], type: 'linkedin', source, proximity: prox > 0.3, proximityScore: prox, isDomainMatch: false, isGeneric: false });
         }
     }
 
     const twitterRx = /https?:\/\/(?:www\.)?(?:twitter\.com|x\.com)\/[A-Za-z0-9_]{1,30}/g;
-    while ((m = twitterRx.exec(text)) !== null) {
-        if (!/\/(search|hashtag|i|home|explore|settings|login|signup)$/i.test(m[0]))
-            results.push({ value: m[0], type: 'twitter', source, proximity: isNearNameProfile(m.index), isDomainMatch: false, isGeneric: false });
+    while ((m = twitterRx.exec(textDeobf)) !== null) {
+        if (!/\/(search|hashtag|i|home|explore|settings|login|signup)$/i.test(m[0])) {
+            const prox = proximityScore(m.index, namePositions);
+            results.push({ value: m[0], type: 'twitter', source, proximity: prox > 0.3, proximityScore: prox, isDomainMatch: false, isGeneric: false });
+        }
     }
     return results;
 }
 
-module.exports = { extractContactsContextual };
+module.exports = { extractContactsContextual, deobfuscate, proximityScore };

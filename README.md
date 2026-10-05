@@ -1,99 +1,46 @@
-# OSINT Contact Finder v6.0
+# OSINT Contact Finder
 
-Recherche de contacts professionnels multi-sources avec vérification croisée et scoring basé sur preuves.
+A Node.js service that finds and scores the professional email address, phone number, and LinkedIn profile of a named person at a given company, using public sources and third-party APIs.
 
-**Nouveautés v6** (détail complet dans [`CHANGELOG-v6.md`](./CHANGELOG-v6.md)) :
-- **+30-50 % de hit rate** attendu sur les emails pros trouvés
-- **Résilience** : 4 moteurs de recherche en fallback (Jina → Serper → Tavily → Bing)
-- **Nouvelles sources gratuites** : GitHub (profils + commits publics), Wayback Machine, EmailRep, RDAP/WHOIS, Common Crawl, Companies House (UK)
-- **Validation avancée** : vérification SMTP directe, fingerprint MX (probabilité catch-all), reverse cross-check web
-- **RGPD** : audit log (rétention 3 ans), do-not-contact list, droits d'accès/effacement
-- **Exports CRM** : HubSpot, Salesforce, Pipedrive
-- **0 API payante ajoutée** — toutes les nouvelles sources sont gratuites ou freemium
+## Run it
 
----
-
-## Prérequis
-
-- **Node.js 18+** ([nodejs.org](https://nodejs.org)) — testé sous Node 24
-- *(optionnel)* compilateur C++ pour `better-sqlite3` (cache, DNC et audit-log persistants)
-
-## Installation
+Requires Node.js 18 or later.
 
 ```bash
-git clone https://github.com/Baptiste6913/Osint-tool.git
-cd Osint-tool
 npm install
-
-# (optionnel) cache / do-not-contact / audit-log persistants
-npm install better-sqlite3
-
-cp .env.example .env   # puis renseigner au moins une clé moteur (voir ci-dessous)
+cp .env.example .env    # set at least one search engine key
+npm start               # http://localhost:3000
 ```
 
-> Sans `better-sqlite3`, le serveur démarre quand même : le cache, la DNC et l'audit-log
-> sont simplement désactivés (dégradation gracieuse, aucune erreur bloquante).
+`better-sqlite3` is an optional dependency. Without it the server still starts, with the cache, do-not-contact list, and audit log disabled.
 
-## Configuration (`.env`)
-
-Toutes les clés sont **optionnelles sauf au moins un moteur de recherche** (Jina, ou Serper / Tavily / Bing en fallback). Voir [`.env.example`](./.env.example) pour la liste complète et les liens d'inscription (offres gratuites/freemium).
-
-| Variable | Rôle | Gratuit |
-|---|---|---|
-| `JINA_API_KEY` | Moteur de recherche principal | 10M tokens |
-| `HUNTER_API_KEY` | Recherche + vérification email | 25+50/mois |
-| `SERPER_API_KEY` / `TAVILY_API_KEY` / `BING_SEARCH_KEY` | Moteurs de fallback | oui |
-| `GITHUB_TOKEN` | Élève le rate limit GitHub (60/h → 5000/h) | oui |
-| `PAPPERS_API_KEY` | Données entreprises FR | 100 jetons |
-| `PORT` | Port d'écoute (défaut `3000`) | — |
-
-⚠️ **Ne committez jamais votre `.env`** — il est déjà dans `.gitignore`.
-
-## Lancer
+Run the tests:
 
 ```bash
-npm start          # = node server.js  →  http://localhost:3000
+npm test
 ```
 
-Au démarrage, un **health-check** affiche l'état et le quota de chaque source API.
-
-## Tests
+Start a scan from the browser UI, or call the API directly. The response is a server-sent event stream.
 
 ```bash
-npm test           # = node --test tests/
+curl -N -X POST http://localhost:3000/api/scan \
+  -H "Content-Type: application/json" \
+  -d '{"fullname":"Jane Doe","company":"example.com"}'
 ```
 
----
+## Architecture
 
-## API
+- `server.js`: Express app. It serves `public/index.html` and exposes scan, batch (up to 25 contacts), export, do-not-contact, audit, cache, and health endpoints. Scans are limited to 5 per minute and 50 per hour.
+- `src/pipeline.js`: a 12-step scan that streams progress through `src/sse.js`. It resolves the company and domain, checks MX records, then runs API lookups, web search, and GitHub search in parallel.
+- `src/providers/`: 19 modules, one per source (Hunter, Snov, Apollo, Pappers, Companies House, GitHub, Wayback, RDAP, SMTP probing, and four search engines with fallback order Jina, Serper, Tavily, Bing).
+- `src/predictions.js`, `pattern-inference.js`, `pattern-stats.js`: generate candidate addresses from name variants and infer the company's address pattern.
+- `src/scoring.js`: adds points per source and per verification, subtracts for generic addresses and catch-all domains, and eliminates addresses with invalid MX or SMTP. Results fall into verified (90 or more), probable (60 to 89), and possible (30 to 59).
+- `src/cache.js`, `dnc.js`, `audit-log.js`: SQLite-backed scan cache, do-not-contact list, and audit log.
 
-| Méthode | Endpoint | Description |
-|---|---|---|
-| `GET`  | `/api/status` | État du service |
-| `GET`  | `/api/health` | Health-check des sources API + quotas |
-| `POST` | `/api/scan` | Scan complet d'un contact |
-| `POST` | `/api/scan/quick` | Scan rapide |
-| `POST` | `/api/scan/batch` | Scan par lot (jusqu'à 25 contacts) |
-| `GET`  | `/api/export/:format` | Export `csv`, `hubspot`, `salesforce`, `pipedrive` |
-| `GET/POST/DELETE` | `/api/dnc` | Do-Not-Contact list |
-| `GET`  | `/api/audit` · `/api/audit/access` | Journal RGPD / droit d'accès |
-| `DELETE` | `/api/audit/erasure` | Droit d'effacement (RGPD art. 17) |
-| `GET`  | `/api/cache/stats` · `/api/cache/clear` | Cache |
+## Stack
 
----
+Node.js, Express, node-fetch, dotenv, cors, optional better-sqlite3, and a single-page front end in plain HTML with Tailwind loaded from a CDN. Tests use the built-in `node --test` runner.
 
-## Déploiement
+## Status
 
-Application Express standard, prête pour tout PaaS (Render, Railway, Clever Cloud, Heroku…) :
-
-- **Commande de build** : `npm install`
-- **Commande de démarrage** : `npm start`
-- Le serveur écoute sur `0.0.0.0` et respecte la variable d'environnement **`PORT`**
-- Renseigner les clés API du `.env` en **variables d'environnement** de la plateforme (ne pas committer le `.env`)
-- Pour le cache/DNC/audit-log persistants, ajouter `better-sqlite3` aux dépendances et prévoir un volume pour le fichier `cache.db`
-
----
-
-## Licence
-
-Usage interne. Respecter les CGU des sources interrogées et le RGPD lors de toute collecte de données personnelles.
+Version 6.0.0, tracked in `package.json`. The repository holds 7 test files covering scoring, address prediction, pattern inference, MX fingerprinting, and two providers. The pipeline itself has no automated test. Exports are available for CSV, HubSpot, Salesforce, and Pipedrive.
